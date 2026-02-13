@@ -1,0 +1,30 @@
+const Queue = require("bull");
+
+const redisConfig = {
+  host: process.env.REDIS_HOST || "localhost",
+  port: process.env.REDIS_PORT || 6379,
+};
+
+// Create separate queues for different job types
+const queues = {
+  email: new Queue("emailQueue", { redis: redisConfig }),
+  notification: new Queue("notificationQueue", { redis: redisConfig }),
+  report: new Queue("reportQueue", { redis: redisConfig }),
+  default: new Queue("defaultQueue", { redis: redisConfig }),
+};
+
+// Configure each queue with error handling
+Object.values(queues).forEach((queue) => {
+  queue.on("error", (error) => {
+    console.error(`[Queue ${queue.name}] Error:`, error);
+  });
+});
+
+const getAllQueues = () => {
+  return queues;
+};
+
+module.exports = {
+  getAllQueues,
+  queues,
+};
