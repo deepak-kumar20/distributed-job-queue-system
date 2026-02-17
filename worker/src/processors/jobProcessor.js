@@ -1,42 +1,31 @@
-const processJob = async (job) => { 
-    try {
-        const { type, ...data } = job.data;
-        switch (type) {
-            case 'email':
-                await processEmail(data);
-                break;
-            case 'notification':
-                await processNotification(data);
-                break;
-            default:
-                await processDefault(data); 
-        }
-        console.log(`Job ${job.id} processed successfully`);
-        return {success: true,message: `Job ${job.id} processed successfully`};
-    } catch (error) {
-        console.error(`Error processing job ${job.id}:`, error);
-        return {success: false, message: `Error processing job ${job.id}`};
+const processJob = async (job) => {
+  try {
+    const { type, ...data } = job.data;
+    switch (type) {
+      case "email":
+        await processEmail(data);
+        break;
+      case "notification":
+        await processNotification(data);
+        break;
+      default:
+        await processDefault(data);
     }
-}
+    return { success: true, message: `Job processed successfully` };
+  } catch (error) {
+    throw error;
+  }
+};
 const processEmail = async (data) => {
-    console.log('Sending email to:', data.to)
-    console.log('subject', data.subject)
-    await delay(2000);
-    console.log('Email sent')
-}
+  await delay(2000);
+};
 const processNotification = async (data) => {
-    console.log('Seding notification:', data.title);
-    await delay(2000);
-    console.log('Notification sent');
-    
-    
-}
+  await delay(2000);
+};
 const processDefault = async (data) => {
-    console.log('Processing default job:', data);
-    await delay(1500);
-    console.log('Job done');
-}
+  await delay(1500);
+};
 const delay = (ms) => {
-    return new Promise(resolve=>setTimeout(resolve,ms))
-}
+  return new Promise((resolve) => setTimeout(resolve, ms));
+};
 module.exports = processJob;

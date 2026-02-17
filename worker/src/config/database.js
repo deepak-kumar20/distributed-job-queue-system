@@ -12,7 +12,7 @@ const pool = new Pool({
 });
 
 pool.on("connect", () => {
-  console.log("[Worker] Connected to PostgreSQL database");
+  // Database connected
 });
 
 pool.on("error", (err) => {

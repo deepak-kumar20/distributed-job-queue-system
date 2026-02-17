@@ -1,27 +1,21 @@
-require("dotenv").config();
+require("dotenv").config({ debug: false });
 const { getAllQueues } = require("./services/queueManager");
 const processJob = require("./processors/jobProcessor");
 const Job = require("./models/Job");
 const pool = require("./config/database");
-
-console.log("Worker started...");
-console.log("Connecting to Redis at:", process.env.REDIS_HOST || "localhost");
 
 // Get all queues
 const queues = getAllQueues();
 
 // Process jobs from each queue
 Object.entries(queues).forEach(([queueName, queue]) => {
-  console.log(`[Worker] Setting up processor for ${queueName}...`);
-
   queue.process(async (job) => {
     const jobId = job.data.jobId;
-    console.log(`\n[Worker] [${queueName}] Received job ${jobId}`);
+    console.log(`▶ Started [${queueName}] Job ${jobId}`);
 
     try {
       // Mark job as active in database
       await Job.updateStatus(jobId, "active");
-      console.log(`[Worker] [${queueName}] Job ${jobId} marked as active`);
 
       // Process the job
       const result = await processJob(job);
@@ -30,14 +24,11 @@ Object.entries(queues).forEach(([queueName, queue]) => {
       await Job.updateStatus(jobId, "completed", {
         results: result,
       });
-      console.log(`[Worker] [${queueName}] Job ${jobId} marked as completed`);
+      console.log(`✓ Completed [${queueName}] Job ${jobId}`);
 
       return result;
     } catch (error) {
-      console.error(
-        `[Worker] [${queueName}] Job ${jobId} failed:`,
-        error.message,
-      );
+      console.error(`✗ Failed [${queueName}] Job ${jobId}:`, error.message);
 
       // Increment attempts
       const updatedJob = await Job.incrementAttempts(jobId);
@@ -45,14 +36,14 @@ Object.entries(queues).forEach(([queueName, queue]) => {
       // Check if max attempts reached
       if (updatedJob.attempts >= updatedJob.max_attempts) {
         console.error(
-          `[Worker] [${queueName}] Job ${jobId} exceeded max attempts, moving to dead-letter`,
+          `☠ Dead-letter [${queueName}] Job ${jobId} (max attempts exceeded)`,
         );
         await Job.updateStatus(jobId, "dead-letter", {
           error: error.message,
         });
       } else {
         console.log(
-          `[Worker] [${queueName}] Job ${jobId} will retry. Attempt ${updatedJob.attempts}/${updatedJob.max_attempts}`,
+          `↻ Retry [${queueName}] Job ${jobId} (${updatedJob.attempts}/${updatedJob.max_attempts})`,
         );
         await Job.updateStatus(jobId, "failed", {
           error: error.message,
@@ -64,30 +55,12 @@ Object.entries(queues).forEach(([queueName, queue]) => {
   });
 
   // Event listeners for each queue
-  queue.on("completed", (job, result) => {
-    console.log(
-      `[Worker] [${queueName}] Job ${job.id} completed with result:`,
-      result,
-    );
-  });
-
-  queue.on("failed", (job, err) => {
-    console.error(
-      `[Worker] [${queueName}] Job ${job.id} failed with error:`,
-      err.message,
-    );
-  });
-
-  queue.on("active", (job) => {
-    console.log(`[Worker] [${queueName}] Job ${job.id} is now active`);
-  });
-
   queue.on("error", (error) => {
-    console.error(`[Worker] [${queueName}] Queue error:`, error);
+    console.error(`✗ Queue error [${queueName}]:`, error.message);
   });
 });
 
-console.log("Worker is ready and waiting for jobs from all queues...");
+console.log("✓ Worker ready");
 let isShuttingDown = false;
 
 const gracefulShutdown = async (signal) => {
@@ -146,4 +119,4 @@ const gracefulShutdown = async (signal) => {
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
-console.log("[Worker] Graceful shutdown handlers registered");
+// Graceful shutdown handlers registered

@@ -13,10 +13,10 @@ const queues = {
   default: new Queue("defaultQueue", { redis: redisConfig }),
 };
 
-// Configure each queue with retry settings
+// Configure each queue with error handling
 Object.values(queues).forEach((queue) => {
   queue.on("error", (error) => {
-    console.error(`[Queue ${queue.name}] Error:`, error);
+    console.error(`✗ Queue error [${queue.name}]:`, error.message);
   });
 });
 
