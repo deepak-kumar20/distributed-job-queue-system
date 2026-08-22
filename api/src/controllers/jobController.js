@@ -2,48 +2,40 @@ const crypto = require("crypto");
 const { getQueue } = require("../services/queueManager");
 const Job = require("../models/Job");
 
-// Create a new job
+// Create a new job using Transactional Outbox pattern
 const createJob = async (req, res) => {
   const { jobData } = req.body;
+  const pool = require("../config/database");
 
+  const client = await pool.connect();
   try {
-    // Validate input
-    if (!jobData || !jobData.type) {
-      return res.status(400).json({ error: "jobData.type is required" });
-    }
-
     const { type, priority = 0, maxAttempts = 3, ...data } = jobData;
-
-    // Generate unique job ID
     const jobId = crypto.randomUUID();
 
-    // Get appropriate queue based on job type
-    const queue = getQueue(type);
+    await client.query('BEGIN');
 
-    // Add job to Bull queue with UUID attached to job data
-    const bullJob = await queue.add(
-      { ...jobData, jobId },
-      {
-        priority: priority,
-        attempts: maxAttempts,
-        backoff: {
-          type: "exponential",
-          delay: 2000,
-        },
-      },
-    );
+    // Insert into DB as 'pending' outbox pattern
+    const query = `
+      INSERT INTO jobs (job_id, type, data, priority, max_attempts, status)
+      VALUES ($1, $2, $3, $4, $5, 'pending')
+      RETURNING *
+    `;
+    const values = [jobId, type, JSON.stringify(data), priority, maxAttempts];
+    const result = await client.query(query, values);
 
-    // Save job metadata to database
-    await Job.create(jobId, type, data, priority, maxAttempts);
+    await client.query('COMMIT');
 
     res.status(200).json({
-      message: "Job added to queue successfully",
+      message: "Job added to queue successfully (Outbox pattern)",
       jobId: jobId,
       type: type,
     });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error("Error adding job:", error);
     res.status(500).json({ error: "Failed to add job to queue" });
+  } finally {
+    client.release();
   }
 };
 
@@ -57,38 +49,52 @@ const getJobById = async (req, res) => {
       return res.status(404).json({ error: "Job not found" });
     }
 
-    res.status(200).json({
-      jobId: job.job_id,
-      type: job.type,
-      status: job.status,
-      priority: job.priority,
-      data: job.data,
-      result: job.results,
-      error: job.error,
-      attempts: job.attempts,
-      maxAttempts: job.max_attempts,
-      createdAt: job.created_at,
-      startedAt: job.started_at,
-      completedAt: job.completed_at,
-      failedAt: job.failed_at,
-    });
+    res.status(200).json(job);
   } catch (error) {
     console.error("Error fetching job:", error);
     res.status(500).json({ error: "Failed to fetch job" });
   }
 };
 
-// Get all jobs
+// Get all jobs with Keyset Pagination
 const getAllJobs = async (req, res) => {
   try {
-    const { status, limit = 50, offset = 0 } = req.query;
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const lastCursor = req.query.lastCursor; // Keyset pagination cursor (timestamp)
+    const status = req.query.status;
+    const pool = require("../config/database");
 
-    const jobs = await Job.findAll(parseInt(limit), parseInt(offset), status);
+    let query = "SELECT * FROM jobs";
+    let params = [];
+    let paramCounter = 1;
+
+    let conditions = [];
+
+    if (status) {
+      conditions.push(`status = $${paramCounter++}`);
+      params.push(status);
+    }
+    
+    if (lastCursor) {
+      // Assuming lastCursor is created_at
+      conditions.push(`created_at < $${paramCounter++}`);
+      params.push(lastCursor);
+    }
+
+    if (conditions.length > 0) {
+      query += " WHERE " + conditions.join(" AND ");
+    }
+    
+    query += ` ORDER BY created_at DESC LIMIT $${paramCounter}`;
+    params.push(limit);
+
+    const result = await pool.query(query, params);
+    const jobs = result.rows;
 
     res.status(200).json({
       total: jobs.length,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
+      limit: limit,
+      nextCursor: jobs.length > 0 ? jobs[jobs.length - 1].created_at : null,
       jobs: jobs.map((job) => ({
         jobId: job.job_id,
         type: job.type,

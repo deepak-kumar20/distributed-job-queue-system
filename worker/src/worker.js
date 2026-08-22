@@ -60,7 +60,11 @@ Object.entries(queues).forEach(([queueName, queue]) => {
   });
 });
 
+const { monitorStaleJobs } = require("./services/heartbeatMonitor");
+
 console.log("✓ Worker ready");
+// Start heartbeat monitoring for crash recovery
+monitorStaleJobs();
 let isShuttingDown = false;
 
 const gracefulShutdown = async (signal) => {

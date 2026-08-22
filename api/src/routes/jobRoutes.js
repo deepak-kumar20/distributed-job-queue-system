@@ -6,7 +6,9 @@ const {
   getAllJobs,
 } = require("../controllers/jobController");
 
-router.post("/add-job", createJob);
+const { validateJob } = require("../middlewares/validationMiddleware");
+
+router.post("/add-job", validateJob, createJob);
 router.get("/:jobId", getJobById);
 router.get("/", getAllJobs);
 

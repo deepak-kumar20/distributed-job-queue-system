@@ -10,6 +10,10 @@ const PORT = process.env.PORT || 3000;
 app.get("/", (req, res) => {
   res.send("<h1>Hello, World!</h1>");
 });
+const authenticateJWT = require("./middlewares/authMiddleware");
+
+app.use("/api/v1", authenticateJWT);
+
 app.use("/api/v1/jobs", jobRoutes);
 app.use("/api/v1/health", healthRoutes);
 app.use("/api/v1/metrics", metricsRoutes);
